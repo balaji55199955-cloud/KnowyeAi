@@ -1,0 +1,6 @@
+{
+  "name": "knowye - AI Calorie Tracker",
+  "description": "A visual and conversational AI calorie tracker and nutrition goal assistant. Scan food photos or speak to log ingredients, macro, and micro elements instantly.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
