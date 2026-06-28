@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config();
 
@@ -24,35 +24,43 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-function extractJSON(text: string): any {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced) return JSON.parse(fenced[1].trim());
-  const braceStart = text.indexOf("{");
-  const braceEnd = text.lastIndexOf("}");
-  if (braceStart !== -1 && braceEnd !== -1) {
-    return JSON.parse(text.slice(braceStart, braceEnd + 1));
-  }
-  throw new Error("No valid JSON found in model response.");
-}
-
-const JSON_SCHEMA_INSTRUCTION = `
-You MUST respond with ONLY valid JSON (no markdown, no explanation, no code fences). The JSON must match this exact structure:
-{
-  "summary": "A 1-2 sentence friendly summary of the entry",
-  "items": [
-    {
-      "name": "Food or exercise name",
-      "category": "Breakfast" | "Lunch" | "Dinner" | "Snacks" | "Exercise",
-      "calories": number,
-      "protein": number,
-      "carbs": number,
-      "fat": number,
-      "amount": "portion description",
-      "isExercise": boolean,
-      "micros": { "sodium": number, "potassium": number, "calcium": number, "iron": number, "vitaminC": number }
+const ITEM_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    category: { type: Type.STRING },
+    calories: { type: Type.NUMBER },
+    protein: { type: Type.NUMBER },
+    carbs: { type: Type.NUMBER },
+    fat: { type: Type.NUMBER },
+    amount: { type: Type.STRING },
+    isExercise: { type: Type.BOOLEAN },
+    micros: {
+      type: Type.OBJECT,
+      properties: {
+        sodium: { type: Type.NUMBER },
+        potassium: { type: Type.NUMBER },
+        calcium: { type: Type.NUMBER },
+        iron: { type: Type.NUMBER },
+        vitaminC: { type: Type.NUMBER }
+      },
+      required: ["sodium", "potassium", "calcium", "iron", "vitaminC"]
     }
-  ]
-}`;
+  },
+  required: ["name", "category", "calories", "protein", "carbs", "fat", "amount", "isExercise", "micros"]
+};
+
+const RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    summary: { type: Type.STRING },
+    items: {
+      type: Type.ARRAY,
+      items: ITEM_SCHEMA
+    }
+  },
+  required: ["summary", "items"]
+};
 
 // ----------------- API ROUTES -----------------
 
@@ -69,24 +77,25 @@ app.post("/api/parse-journal", async (req: Request, res: Response) => {
 
     const ai = getGeminiClient();
 
-    const prompt = `You are knowye AI, a highly precise nutritional scientist. Analyze this food/exercise entry:
+    const prompt = `Analyze the following food journaling / exercise entry:
 ---
 ${text}
 ---
-Current time: ${localTime || new Date().toISOString()}
+Current user local time: ${localTime || new Date().toISOString()}
 
-Extract each food, beverage, or exercise. Estimate accurate nutritional values (Calories, Protein, Carbs, Fat) and micronutrients (Sodium, Potassium, Calcium, Iron, Vitamin C in mg).
-Categories: 'Breakfast', 'Lunch', 'Dinner', 'Snacks', or 'Exercise'.
+Extract each distinctly mentioned food, beverage, or physical exercise. Estimate accurate nutritional values (Calories, Protein, Carbs, Fat) and micronutrients (Sodium, Potassium, Calcium, Iron, Vitamin C in mg).
+Match to categories: 'Breakfast', 'Lunch', 'Dinner', 'Snacks', or 'Exercise'.
 For exercises: calories = burned (positive), protein/carbs/fat/micros = 0, isExercise = true.
 For food: calories = consumed (positive), isExercise = false.
-
-${JSON_SCHEMA_INSTRUCTION}`;
+Provide a 1-2 sentence friendly summary.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
-        systemInstruction: "You are a JSON-only API. Never output anything except valid JSON. No markdown, no explanation."
+        systemInstruction: "You are knowye AI, a highly precise nutritional scientist and sports performance tracker. Extract nutritional metrics from natural descriptions. Never invent food items not implied.",
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA
       }
     });
 
@@ -95,8 +104,7 @@ ${JSON_SCHEMA_INSTRUCTION}`;
       throw new Error("No response received from the AI model.");
     }
 
-    const parsedResult = extractJSON(resultText);
-    return res.json(parsedResult);
+    return res.json(JSON.parse(resultText));
   } catch (error: any) {
     console.error("Error in /api/parse-journal:", error);
     return res.status(500).json({
@@ -127,22 +135,18 @@ app.post("/api/analyze-food-image", async (req: Request, res: Response) => {
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: [
+        { inlineData: { mimeType, data: cleanData } },
         {
-          inlineData: {
-            mimeType: mimeType,
-            data: cleanData
-          }
-        },
-        {
-          text: `You are knowye AI, a food scanner. Analyze this food image and identify all food items.
-Estimate portions, then calculate: Calories, Protein, Carbs, Fat, and micros (Sodium, Potassium, Calcium, Iron, Vitamin C in mg).
+          text: `Analyze this food image. Identify all food items, estimate portions, and calculate:
+Calories, Protein, Carbs, Fat, and micros (Sodium, Potassium, Calcium, Iron, Vitamin C in mg).
 Categories: 'Breakfast', 'Lunch', 'Dinner', or 'Snacks'. isExercise is always false.
-
-${JSON_SCHEMA_INSTRUCTION}`
+Provide a supportive 1-2 sentence summary.`
         }
       ],
       config: {
-        systemInstruction: "You are a JSON-only API. Never output anything except valid JSON. No markdown, no explanation."
+        systemInstruction: "You are knowye AI, an advanced food scanner and visual nutritional scientist. Identify ingredients in food photos and generate accurate macro and micro parameters.",
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA
       }
     });
 
@@ -151,8 +155,7 @@ ${JSON_SCHEMA_INSTRUCTION}`
       throw new Error("No response received from the AI model.");
     }
 
-    const parsedResult = extractJSON(resultText);
-    return res.json(parsedResult);
+    return res.json(JSON.parse(resultText));
   } catch (error: any) {
     console.error("Error in /api/analyze-food-image:", error);
     return res.status(500).json({
@@ -170,20 +173,21 @@ app.post("/api/refine-journal", async (req: Request, res: Response) => {
 
     const ai = getGeminiClient();
 
-    const prompt = `You are knowye AI. Here is the current food/exercise log:
+    const prompt = `Current food/exercise log:
 ${JSON.stringify(currentItems || [])}
 
 User request: "${instruction}"
 
-Modify the list accordingly. You can add, edit, or remove items. Recalculate all nutritional values accurately.
-
-${JSON_SCHEMA_INSTRUCTION}`;
+Modify the list accordingly. Add, edit, or remove items. Recalculate all nutritional values accurately.
+Provide a brief summary of what was changed.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: prompt,
       config: {
-        systemInstruction: "You are a JSON-only API. Never output anything except valid JSON. No markdown, no explanation."
+        systemInstruction: "You are knowye AI. Update list items precisely matching instructions. Adjust nutritional properties whenever ingredients are changed, scaled or removed.",
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA
       }
     });
 
@@ -192,8 +196,7 @@ ${JSON_SCHEMA_INSTRUCTION}`;
       throw new Error("No response received from the AI model.");
     }
 
-    const parsedResult = extractJSON(resultText);
-    return res.json(parsedResult);
+    return res.json(JSON.parse(resultText));
   } catch (error: any) {
     console.error("Error in /api/refine-journal:", error);
     return res.status(500).json({
