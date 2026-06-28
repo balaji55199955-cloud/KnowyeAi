@@ -83,7 +83,7 @@ For food: calories = consumed (positive), isExercise = false.
 ${JSON_SCHEMA_INSTRUCTION}`;
 
     const response = await ai.models.generateContent({
-      model: "gemma-4-31b-it",
+      model: "gemini-3.5-flash",
       contents: prompt,
       config: {
         systemInstruction: "You are a JSON-only API. Never output anything except valid JSON. No markdown, no explanation."
@@ -125,7 +125,7 @@ app.post("/api/analyze-food-image", async (req: Request, res: Response) => {
     const ai = getGeminiClient();
 
     const response = await ai.models.generateContent({
-      model: "gemma-4-31b-it",
+      model: "gemini-3.5-flash",
       contents: [
         {
           inlineData: {
@@ -180,7 +180,7 @@ Modify the list accordingly. You can add, edit, or remove items. Recalculate all
 ${JSON_SCHEMA_INSTRUCTION}`;
 
     const response = await ai.models.generateContent({
-      model: "gemma-4-31b-it",
+      model: "gemini-3.5-flash",
       contents: prompt,
       config: {
         systemInstruction: "You are a JSON-only API. Never output anything except valid JSON. No markdown, no explanation."
