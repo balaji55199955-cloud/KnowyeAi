@@ -64,7 +64,7 @@ For workouts/exercise, estimate the range of active calories burned ('calories' 
 Set 'isExercise' to true for exercises/workouts, and false for foods or beverages. For exercises, protein, carbs, fat, and micros must be 0.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: prompt,
       config: {
         systemInstruction: "You are knowye AI, a highly precise, encouraging nutritional scientist and sports performance tracker. You extract nutritional metrics and detailed macro/micro profiles from natural, conversational descriptions. Never invent food items not implied, but always parse complex descriptors correctly.",
@@ -149,7 +149,7 @@ app.post("/api/analyze-food-image", async (req: Request, res: Response) => {
     const ai = getGeminiClient();
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: [
         {
           inlineData: {
@@ -257,7 +257,7 @@ Modify the list based on this request. You can:
 Provide a brief summarization of the modification and the updated list.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: prompt,
       config: {
         systemInstruction: "You are knowye AI. You update list items precisely matching instructions. Adjust nutritional properties (macros and micros) whenever ingredients are changed, scaled or removed.",
