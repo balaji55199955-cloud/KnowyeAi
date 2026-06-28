@@ -1,17 +1,24 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 let aiClient: GoogleGenAI | null = null;
 
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error("GEMINI_API_KEY environment variable is not defined.");
-    }
+    if (!key) throw new Error("GEMINI_API_KEY environment variable is not defined.");
     aiClient = new GoogleGenAI({ apiKey: key });
   }
   return aiClient;
+}
+
+function extractJSON(text: string): any {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return JSON.parse(fenced[1].trim());
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end !== -1) return JSON.parse(text.slice(start, end + 1));
+  throw new Error("No valid JSON found in model response.");
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -41,62 +48,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ai = getGeminiClient();
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: [
         { inlineData: { mimeType, data: cleanData } },
         {
-          text: `Analyze this food image. Identify all food items, estimate portions, and calculate:
-Calories, Protein, Carbs, Fat, and micros (Sodium, Potassium, Calcium, Iron, Vitamin C in mg).
+          text: `You are knowye AI, a food scanner. Analyze this food image and identify all food items.
+Estimate portions, then calculate: Calories, Protein, Carbs, Fat, and micros (Sodium, Potassium, Calcium, Iron, Vitamin C in mg).
 Categories: 'Breakfast', 'Lunch', 'Dinner', or 'Snacks'. isExercise is always false.
-Provide a supportive 1-2 sentence summary.`
+
+Respond with ONLY valid JSON matching this exact structure (no markdown, no code fences, no explanation):
+{"summary":"1-2 sentence summary","items":[{"name":"Food name","category":"Lunch","calories":350,"protein":20,"carbs":40,"fat":12,"amount":"1 plate","isExercise":false,"micros":{"sodium":400,"potassium":350,"calcium":80,"iron":3,"vitaminC":10}}]}`
         }
       ],
       config: {
-        systemInstruction: "You are knowye AI, an advanced food scanner. Identify ingredients in food photos and generate accurate nutritional parameters.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            summary: { type: Type.STRING },
-            items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  category: { type: Type.STRING },
-                  calories: { type: Type.NUMBER },
-                  protein: { type: Type.NUMBER },
-                  carbs: { type: Type.NUMBER },
-                  fat: { type: Type.NUMBER },
-                  amount: { type: Type.STRING },
-                  isExercise: { type: Type.BOOLEAN },
-                  micros: {
-                    type: Type.OBJECT,
-                    properties: {
-                      sodium: { type: Type.NUMBER },
-                      potassium: { type: Type.NUMBER },
-                      calcium: { type: Type.NUMBER },
-                      iron: { type: Type.NUMBER },
-                      vitaminC: { type: Type.NUMBER }
-                    },
-                    required: ["sodium", "potassium", "calcium", "iron", "vitaminC"]
-                  }
-                },
-                required: ["name", "category", "calories", "protein", "carbs", "fat", "amount", "isExercise", "micros"]
-              }
-            }
-          },
-          required: ["summary", "items"]
-        }
+        systemInstruction: "You are a JSON-only API. Output ONLY valid JSON. No markdown fences, no explanation, no text before or after the JSON."
       }
     });
 
     const resultText = response.text;
     if (!resultText) throw new Error("No response received from the AI model.");
-    return res.json(JSON.parse(resultText));
+    return res.json(extractJSON(resultText));
   } catch (error: any) {
-    console.error("Error in /api/analyze-food-image:", error?.message, error?.stack);
+    console.error("Error in /api/analyze-food-image:", error?.message);
     return res.status(500).json({ error: error.message || "An error occurred while analyzing the food image." });
   }
 }

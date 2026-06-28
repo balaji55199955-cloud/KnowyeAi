@@ -90,7 +90,7 @@ For food: calories = consumed (positive), isExercise = false.
 Provide a 1-2 sentence friendly summary.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: prompt,
       config: {
         systemInstruction: "You are knowye AI, a highly precise nutritional scientist and sports performance tracker. Extract nutritional metrics from natural descriptions. Never invent food items not implied.",
@@ -133,7 +133,7 @@ app.post("/api/analyze-food-image", async (req: Request, res: Response) => {
     const ai = getGeminiClient();
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: [
         { inlineData: { mimeType, data: cleanData } },
         {
@@ -182,7 +182,7 @@ Modify the list accordingly. Add, edit, or remove items. Recalculate all nutriti
 Provide a brief summary of what was changed.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemma-4-31b-it",
       contents: prompt,
       config: {
         systemInstruction: "You are knowye AI. Update list items precisely matching instructions. Adjust nutritional properties whenever ingredients are changed, scaled or removed.",
